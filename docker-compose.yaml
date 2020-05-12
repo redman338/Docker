@@ -1,6 +1,3 @@
-## docker-compose para correr rtorrent sobre raspberry
-## by PeladoNerd https://youtu.be/pZArt1yEw_o
-
 version: "2"
 
 services:
@@ -12,20 +9,63 @@ services:
     stdin_open: true
     tty: true
     ports:
-      - 139:130
+      - 139:139
       - 445:445
     volumes:
       - /usr/share/zoneinfo/America/Argentina/Mendoza:/etc/localtime
-      - /home/pi/media:/media
-      - /home/pi/downloads:/downloads
+      - ${MEDIA}:/media
+      - ${STORAGE}/torrents:/downloads
 
-  rtorrent:
-    image: pablokbs/rutorrent-armhf
-    ports:
-      - 80:80
-      - 51413:51413
-      - 6881:6881/udp
+  plex:
+    image: jaymoulin/plex:1.16.5
+    expose:
+      - 32400
+      - 33400
+    hostname: raspberrypi
     volumes:
-      - /home/pi/torrents-config/rtorrent:/config/rtorrent
-      - /home/pi/downloads:/downloads
-    restart: always
+      - ${STORAGE}/Plex Media Server:/root/Library/Application Support/Plex Media Server
+      - ${MEDIA}:/media
+      - ${STORAGE}/tmp:/tmp
+    restart: unless-stopped
+    networks: 
+      lan:
+        ipv4_address: 192.168.0.3
+
+  transmission:
+    image : jaymoulin/transmission
+    command: transmission-daemon -f -g /config
+    volumes:
+      - ./transmission:/config
+      - ${STORAGE}/torrents:/downloads
+    ports:
+      - 9091:9091
+      - 51413:51413
+      - 51413:51413/udp
+    expose:
+      - 9091
+    restart: unless-stopped
+
+  flexget:
+    build: flexget-arm
+    volumes:
+      - ./flexget:/config
+      - ${STORAGE}/torrents:/downloads
+      - ${MEDIA}:/storage
+    ports:
+      - 5050:5050
+    environment:
+      - TORRENT_PLUGIN=transmission
+      - FG_WEBUI_PASSWD=123456
+    restart: unless-stopped
+    links:
+      - transmission
+
+networks:
+  lan:
+    driver: macvlan
+    driver_opts:
+      parent: eth0
+    ipam:
+      config:
+        - subnet: "192.168.0.0/24"       
+          gateway: "192.168.0.1"
